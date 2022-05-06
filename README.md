@@ -4,5 +4,5 @@
 
 ## FILES
 
-### 1. filter.py: Applies similarity-based filtering on amino acid sequences using the readily availably similarity clusters that can be downloaded from UniProt KB.
+### 1. filter.py: Applies similarity-based filtering on amino acid sequences using the readily available similarity clusters that can be downloaded from UniProt KB.
 ### 2. generate_datasets_POSSUM.py: Generates datasets for each term in the ontology.
