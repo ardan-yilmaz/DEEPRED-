@@ -1,75 +1,93 @@
+import numpy as np
 import torch
-import os
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, matthews_corrcoef
+from utils import custom_mcc
 
-from search_hyperparams import HyperparameterSearch
-from data_loader import get_data_loaders, GOAnnotationsDataset
-from utils import get_class_weights, get_num_classes
-from thresholds import ThresholdFinder
-from model_eval import ModelEvaluator
-from saver import ModelSaver
+class ModelEvaluator:
+    def __init__(self, model, thresholds, device='cpu'):
+        """
+        Initialize the ModelEvaluator class with the trained model and optimal thresholds.
+        :param model: Trained PyTorch model.
+        :param thresholds: Optimal thresholds for each class determined by ThresholdFinder.
+        :param device: Computation device ('cpu' or 'cuda').
+        """
+        self.model = model
+        self.thresholds = thresholds
+        self.device = device
 
-# get all the root_dirs
-sub_graphs = ["dataset/MF, dataset/BP, dataset/CC"] 
-MF_levels = ["dataset/MF/level" + str(i) for i in range(0, 10)]
-BP_levels = ["dataset/BP/level" + str(i) for i in range(0, 13)]
-CC_levels = ["dataset/CC/level" + str(i) for i in range(0, 11)]
-all_root_dirs = MF_levels + BP_levels + CC_levels
-all_root_dirs
+    def evaluate(self, loader):
+        """
+        Evaluates the model on the given dataset with the specified thresholds.
+        :param loader: DataLoader for the dataset.
+        :return: Dictionary of evaluation metrics.
+        """ 
+        true_labels_list = []
+        predictions_list = []
+
+        self.model.eval()
+        with torch.no_grad():
+            for _, inputs, targets in loader:
+                inputs, labels = inputs.to(self.device), targets.to(self.device)
+                outputs = torch.sigmoid(self.model(inputs))
+
+                preds = outputs > torch.Tensor(self.thresholds).to(self.device)
+                
+                true_labels_list.append(labels.cpu().numpy())
+                predictions_list.append(preds.cpu().numpy())
+
+        true_labels = np.vstack(true_labels_list)
+        predictions = np.vstack(predictions_list)
+
+        metrics = self.calculate_metrics(true_labels, predictions)
+        return metrics
+
+    @staticmethod
+    def calculate_metrics(true_labels, predictions):
+        """
+        Calculates and returns the evaluation metrics.
+        :param true_labels: Numpy array of true labels.
+        :param predictions: Numpy array of predictions.
+        :return: Dictionary of evaluation metrics including accuracy, precision, recall, F1-score, MCC, and counts of TP, FP, FN, TN per class.
+        """
+        # Calculate metrics
+        precision, recall, f1, _ = precision_recall_fscore_support(true_labels, predictions, average='micro')
+        mcc = custom_mcc(true_labels.ravel(), predictions.ravel())
+        
+        # Initialize counters
+        TP = FP = FN = TN = 0
+        
+        # Calculate TP, FP, FN, TN for each class
+        for i in range(predictions.shape[1]):  # Iterate through each class
+            tp = np.sum((predictions[:, i] == 1) & (true_labels[:, i] == 1))
+            fp = np.sum((predictions[:, i] == 1) & (true_labels[:, i] == 0))
+            fn = np.sum((predictions[:, i] == 0) & (true_labels[:, i] == 1))
+            tn = np.sum((predictions[:, i] == 0) & (true_labels[:, i] == 0))
+            
+            TP += tp
+            FP += fp
+            FN += fn
+            TN += tn
+        
+        # Calculate accuracy manually as a sanity check
+        total_samples = true_labels.size
+        accuracy = (TP + TN) / total_samples if total_samples else 0
+        
+        return {
+            'accuracy': accuracy,
+            'precision': precision,
+            'recall': recall,
+            'F1-score': f1,
+            'MCC': mcc,
+            'TP': TP,
+            'FP': FP,
+            'FN': FN,
+            'TN': TN
+        }
 
 
 
-# get device
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-for root_dir in all_root_dirs:
-    try:
-        # Splitting the root directory and constructing model path
-        root_dir_l = root_dir.split("/")
-        model_path = root_dir_l[1] + "_" + root_dir_l[2]
-        save_path = os.path.join(root_dir, "saved_info")
-        save_path = os.path.join("models", model_path)
-        print(f"Model to be saved @ {save_path}")
-    except Exception as e:
-        print(f"Error preparing model save path: {e}")
-        continue
+# evaluator = ModelEvaluator(best_model, optimal_thresholds, device='cuda' if torch.cuda.is_available() else 'cpu')
+# evaluation_metrics = evaluator.evaluate(eval_loader)
 
-    try:
-        # Get the details of the dataset
-        num_classes = get_num_classes(root_dir)
-        initial_dataset = GOAnnotationsDataset(root_dir)
-        class_weights = get_class_weights(initial_dataset)
-    except Exception as e:
-        print(f"Error loading dataset details: {e}")
-        continue
-
-    try:
-        # Search for hyperparameters
-        search = HyperparameterSearch(initial_dataset, num_classes, class_weights, num_trials=10, max_epochs=100, device=device)
-        best_model, best_train_losses, best_val_losses, best_trial_params, best_model_test_loader, best_model_test_dataset = search.run_search()
-    except Exception as e:
-        print(f"Error during hyperparameter search: {e}")
-        continue
-
-    try:
-        # Find optimal thresholds
-        threshold_finder = ThresholdFinder(best_model, num_classes, device)
-        optimal_thresholds = threshold_finder.find_optimal_threshold(best_model_test_loader)
-    except Exception as e:
-        print(f"Error finding optimal thresholds: {e}")
-        continue
-
-    try:
-        # Evaluate the model
-        evaluator = ModelEvaluator(best_model, optimal_thresholds, device=device)
-        eval_metrics = evaluator.evaluate(best_model_test_loader)
-    except Exception as e:
-        print(f"Error evaluating the model: {e}")
-        continue
-
-    try:
-        # Save the model
-        saver = ModelSaver(save_path)
-        saver.save(best_model, optimal_thresholds, best_trial_params, eval_metrics, best_train_losses, best_val_losses, best_model_test_dataset)
-    except Exception as e:
-        print(f"Error saving the model: {e}")
-        continue
+# print("Evaluation Metrics:", evaluation_metrics)
