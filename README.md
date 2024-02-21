@@ -45,19 +45,4 @@ A custom JSON encoder for converting NumPy data types into JSON-serializable for
 ### Utility Functions
 Provides essential functions for model loading, threshold retrieval, class weight calculation, custom MCC calculation, and visualization of training/validation losses.
 
-## Getting Started
-
-To get started with this project, clone the repository, install the required dependencies, and follow the usage instructions for each component as outlined above.
-
-## Contributions
-
-Contributions to this project are welcome. Please refer to the contribution guidelines for more information.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-Credits to datasets, libraries, or tools used in the development of this project.
 
