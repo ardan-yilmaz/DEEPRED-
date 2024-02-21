@@ -99,11 +99,12 @@ class HyperparameterSearch:
         best_val_losses = []
         best_trial_params = None
         best_model_test_loader = None # kept for thresholding
+        best_model_test_dataset = None # kept for thresholding
 
         for _ in range(self.num_trials):
             trial_params = self.get_random_params()
             model = MLPClassifier(hidden_layers=trial_params['hidden_layers'], dropout_rate=trial_params['dropout_rate'], num_classes=self.num_classes).to(self.device)
-            train_loader, val_loader, test_loader = get_data_loaders(initial_dataset = self.dataset, batch_size=int(trial_params['batch_size']))
+            train_loader, val_loader, test_loader, test_dataset = get_data_loaders(initial_dataset = self.dataset, batch_size=int(trial_params['batch_size']))
             train_losses, val_losses, model_state = self.train_model(model, patience=10, train_loader=train_loader, val_loader=val_loader, lr=trial_params['lr'])
 
             # if the min loss is better than the best val loss, update the best val loss and model state
@@ -115,9 +116,19 @@ class HyperparameterSearch:
                 best_val_losses = val_losses
                 best_trial_params = trial_params
                 best_model_test_loader = test_loader
+                best_model_test_dataset = test_dataset
+
+        
 
         # After search, load the best model state
-        best_model = MLPClassifier(hidden_layers=best_trial_params['hidden_layers'], dropout_rate=best_trial_params['dropout_rate'], num_classes=self.num_classes).to(self.device)
+        try:
+            best_model = MLPClassifier(hidden_layers=best_trial_params['hidden_layers'],
+                                    dropout_rate=best_trial_params['dropout_rate'],
+                                    num_classes=self.num_classes).to(self.device)
+        except TypeError as e:
+            print("An error occurred while initializing the MLPClassifier. Please check that 'best_trial_params' is properly set.")
+            # Optionally, re-raise the exception if you want the program to stop here
+            raise e
         best_model.load_state_dict(best_model_state)
 
-        return best_model, best_train_losses, best_val_losses, best_trial_params, best_model_test_loader
+        return best_model, best_train_losses, best_val_losses, best_trial_params, best_model_test_loader, best_model_test_dataset
