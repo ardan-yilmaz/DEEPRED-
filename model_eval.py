@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, matthews_corrcoef
+from utils import custom_mcc
 
 class ModelEvaluator:
     def __init__(self, model, thresholds, device='cpu'):
@@ -46,19 +47,43 @@ class ModelEvaluator:
         Calculates and returns the evaluation metrics.
         :param true_labels: Numpy array of true labels.
         :param predictions: Numpy array of predictions.
-        :return: Dictionary of evaluation metrics including accuracy, precision, recall, F1-score, and MCC.
+        :return: Dictionary of evaluation metrics including accuracy, precision, recall, F1-score, MCC, and counts of TP, FP, FN, TN per class.
         """
-        accuracy = accuracy_score(true_labels, predictions)
+        # Calculate metrics
         precision, recall, f1, _ = precision_recall_fscore_support(true_labels, predictions, average='micro')
-        mcc = matthews_corrcoef(true_labels.ravel(), predictions.ravel())
-
+        mcc = custom_mcc(true_labels.ravel(), predictions.ravel())
+        
+        # Initialize counters
+        TP = FP = FN = TN = 0
+        
+        # Calculate TP, FP, FN, TN for each class
+        for i in range(predictions.shape[1]):  # Iterate through each class
+            tp = np.sum((predictions[:, i] == 1) & (true_labels[:, i] == 1))
+            fp = np.sum((predictions[:, i] == 1) & (true_labels[:, i] == 0))
+            fn = np.sum((predictions[:, i] == 0) & (true_labels[:, i] == 1))
+            tn = np.sum((predictions[:, i] == 0) & (true_labels[:, i] == 0))
+            
+            TP += tp
+            FP += fp
+            FN += fn
+            TN += tn
+        
+        # Calculate accuracy manually as a sanity check
+        total_samples = true_labels.size
+        accuracy = (TP + TN) / total_samples if total_samples else 0
+        
         return {
             'accuracy': accuracy,
             'precision': precision,
             'recall': recall,
             'F1-score': f1,
-            'MCC': mcc
+            'MCC': mcc,
+            'TP': TP,
+            'FP': FP,
+            'FN': FN,
+            'TN': TN
         }
+
 
 
 
